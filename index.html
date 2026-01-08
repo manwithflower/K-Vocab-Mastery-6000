@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K-Vocab Mastery 6000</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;700;900&display=swap');
+        body { font-family: 'Pretendard', sans-serif; background-color: #f1f5f9; }
+        .card-shadow { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        const App = () => {
+            const [allWords, setAllWords] = useState([]);
+            const [learnedIds, setLearnedIds] = useState(new Set());
+            const [loading, setLoading] = useState(true);
+            const [currentIndex, setCurrentIndex] = useState(0);
+            const [isFlipped, setIsFlipped] = useState(false);
+            const [filter, setFilter] = useState("all"); // all, unlearned, learned
+            const [searchTerm, setSearchTerm] = useState("");
+
+            // 데이터 및 로컬 스토리지 불러오기
+            useEffect(() => {
+                const fetchData = async () => {
+                    try {
+                        const res = await fetch('./word_data_translated.json');
+                        const data = await res.json();
+                        setAllWords(data);
+                        
+                        const saved = localStorage.getItem('k_vocab_learned');
+                        if (saved) setLearnedIds(new Set(JSON.parse(saved)));
+                        
+                        setLoading(false);
+                    } catch (e) {
+                        alert("데이터 파일을 찾을 수 없습니다. word_data_translated.json이 같은 폴더에 있는지 확인하세요.");
+                    }
+                };
+                fetchData();
+            }, []);
+
+            // 학습 상태 저장
+            const toggleLearned = (id) => {
+                const newLearned = new Set(learnedIds);
+                if (newLearned.has(id)) newLearned.delete(id);
+                else newLearned.add(id);
+                
+                setLearnedIds(newLearned);
+                localStorage.setItem('k_vocab_learned', JSON.stringify([...newLearned]));
+            };
+
+            const filteredList = useMemo(() => {
+                return allWords.filter(w => {
+                    const matchesSearch = w.word.includes(searchTerm);
+                    const isLearned = learnedIds.has(w.id);
+                    if (filter === "unlearned") return matchesSearch && !isLearned;
+                    if (filter === "learned") return matchesSearch && isLearned;
+                    return matchesSearch;
+                });
+            }, [allWords, learnedIds, filter, searchTerm]);
+
+            const currentWord = filteredList[currentIndex];
+            const progress = allWords.length > 0 ? (learnedIds.size / allWords.length * 100).toFixed(1) : 0;
+
+            const speak = (text) => {
+                window.speechSynthesis.cancel();
+                const uttr = new SpeechSynthesisUtterance(text);
+                uttr.lang = 'ko-KR';
+                window.speechSynthesis.speak(uttr);
+            };
+
+            if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-blue-600">Loading Mastery Data...</div>;
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen flex flex-col p-5 pb-10">
+                    <header className="mb-6">
+                        <div className="flex justify-between items-end mb-2">
+                            <h1 className="text-3xl font-black text-slate-800 tracking-tight">K-Mastery</h1>
+                            <span className="text-blue-600 font-bold text-sm">{progress}% Mastered</span>
+                        </div>
+                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                            <div className="bg-blue-600 h-full transition-all duration-500" style={{width: `${progress}%`}}></div>
+                        </div>
+                    </header>
+
+                    <div className="space-y-3 mb-6">
+                        <input 
+                            type="text" 
+                            placeholder="단어 검색..." 
+                            className="w-full p-4 rounded-2xl bg-white shadow-sm focus:ring-2 focus:ring-blue-500 outline-none transition"
+                            onChange={(e) => {setSearchTerm(e.target.value); setCurrentIndex(0);}}
+                        />
+                        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                            {[
+                                {id: "all", label: "전체"},
+                                {id: "unlearned", label: "미학습"},
+                                {id: "learned", label: "완료"}
+                            ].map(f => (
+                                <button 
+                                    key={f.id}
+                                    onClick={() => {setFilter(f.id); setCurrentIndex(0);}}
+                                    className={`px-5 py-2 rounded-full text-xs font-bold whitespace-nowrap transition ${filter === f.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-400 border'}`}
+                                >{f.label}</button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {currentWord ? (
+                        <div className="flex-1 flex flex-col">
+                            <div 
+                                className={`flex-1 min-h-[350px] bg-white rounded-[2.5rem] card-shadow flex flex-col items-center justify-center p-8 relative cursor-pointer transition-all ${learnedIds.has(currentWord.id) ? 'ring-4 ring-green-400' : ''}`}
+                                onClick={() => setIsFlipped(!isFlipped)}
+                            >
+                                <div className="absolute top-6 left-6 flex gap-2">
+                                    <span className="px-3 py-1 bg-slate-100 rounded-full text-[10px] font-bold text-slate-500 uppercase">{currentWord.level_label}</span>
+                                    {learnedIds.has(currentWord.id) && <span className="px-3 py-1 bg-green-100 rounded-full text-[10px] font-bold text-green-600">MASTERED ✅</span>}
+                                </div>
+                                <button onClick={(e) => { e.stopPropagation(); speak(currentWord.word); }} className="absolute top-6 right-6 text-2xl p-2 hover:bg-slate-50 rounded-full">🔊</button>
+                                
+                                {!isFlipped ? (
+                                    <div className="text-center">
+                                        {currentWord.hanja && <p className="text-2xl text-slate-300 font-serif mb-2">{currentWord.hanja}</p>}
+                                        <h2 className="text-7xl font-black text-slate-800 mb-4 tracking-tighter">{currentWord.word}</h2>
+                                        <p className="text-slate-400 font-medium tracking-widest uppercase text-xs">{currentWord.pos}</p>
+                                    </div>
+                                ) : (
+                                    <div className="text-center animate-fadeIn p-4">
+                                        <h3 className="text-4xl font-bold text-blue-600 leading-tight mb-4">{currentWord.definition_en}</h3>
+                                        <p className="text-slate-400 text-sm">Tap to flip back</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mt-8 space-y-6">
+                                <div className="flex justify-between items-center px-4">
+                                    <button 
+                                        onClick={() => {setCurrentIndex(prev => Math.max(0, prev - 1)); setIsFlipped(false);}}
+                                        className="w-14 h-14 rounded-full bg-white shadow-md flex items-center justify-center text-xl active:scale-90 transition"
+                                    >⬅️</button>
+                                    <div className="text-center">
+                                        <p className="text-2xl font-black text-slate-700">{currentIndex + 1} / {filteredList.length}</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => {setCurrentIndex(prev => Math.min(filteredList.length - 1, prev + 1)); setIsFlipped(false);}}
+                                        className="w-14 h-14 rounded-full bg-slate-800 text-white shadow-lg flex items-center justify-center text-xl active:scale-90 transition"
+                                    >➡️</button>
+                                </div>
+
+                                <button 
+                                    onClick={() => toggleLearned(currentWord.id)}
+                                    className={`w-full py-5 rounded-2xl font-black text-lg transition-all active:scale-[0.98] shadow-lg ${learnedIds.has(currentWord.id) ? 'bg-white text-red-500 border-2 border-red-100' : 'bg-green-500 text-white hover:bg-green-600'}`}
+                                >
+                                    {learnedIds.has(currentWord.id) ? "모르는 단어로 표시 ❌" : "이 단어 외웠어요! ✅"}
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                            <p className="text-5xl mb-4">🏜️</p>
+                            <p className="font-bold">조건에 맞는 단어가 없습니다.</p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
